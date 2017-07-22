@@ -19,13 +19,16 @@ class TenantManager
      * @var Collection
      */
     protected $tenants;
-
+    
+    protected $deferredModels;
+    
     /**
      * Landlord constructor.
      */
     public function __construct()
     {
         $this->tenants = collect();
+        $this->deferredModels = collect();
     }
 
     /**
@@ -127,14 +130,31 @@ class TenantManager
         if (!$this->enabled) {
             return;
         }
-
+        
+         if ($this->tenants->isEmpty()) {
+            // No tenants yet, defer scoping to a later stage
+            $this->deferredModels->push($model);
+            return;
+        }
+        
         $this->modelTenants($model)->each(function ($id, $tenant) use ($model) {
             $model->addGlobalScope($tenant, function (Builder $builder) use ($tenant, $id, $model) {
                 $builder->where($model->getQualifiedTenant($tenant), '=', $id);
             });
         });
     }
-
+    
+     public function applyTenantScopesToDeferredModels()
+    {
+        $this->deferredModels->each(function ($model) {
+            $this->modelTenants($model)->each(function ($id, $tenant) use ($model) {
+                $model->addGlobalScope($tenant, function (Builder $builder) use ($tenant, $id, $model) {
+                    $builder->where($model->getQualifiedTenant($tenant), '=', $id);
+                });
+            });
+        });
+    }
+    
     /**
      * Add tenant columns as needed to a new model instance before it is created.
      *
